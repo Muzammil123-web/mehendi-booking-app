@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "364698561747",
+    "project_id": "mehandi-new-studio",
+    "storage_bucket": "mehandi-new-studio.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:364698561747:android:e45a09e61694c5359e7826",
+        "android_client_info": {
+          "package_name": "com.example.mehendi_booking_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD8Ydj7tdwhXfKcTvQPFPu7rjPTJ8RIP4Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

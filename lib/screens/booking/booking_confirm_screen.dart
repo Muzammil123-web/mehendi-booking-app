@@ -73,7 +73,7 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
 
     if (result == null) {
       _showError(
-          'Could not detect your location. Please enable location access and try again.');
+          'Could not detect your location. You can still type your address manually.');
       return;
     }
 
@@ -82,62 +82,23 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
     if (result.address != null && result.address!.isNotEmpty) {
       _addressCtrl.text = result.address!;
     }
-
-    final settings = _shopSettings;
-    if (settings != null && settings.hasLocation) {
-      final distance = LocationService.distanceKm(
-          settings.latitude!, settings.longitude!, result.latitude, result.longitude);
-      setState(() {
-        _withinRangeText = distance > settings.serviceRadiusKm
-            ? 'Sorry, you\'re ${distance.toStringAsFixed(1)}km away — outside our ${settings.serviceRadiusKm.toStringAsFixed(0)}km service area.'
-            : 'You\'re ${distance.toStringAsFixed(1)}km away — within our service area ✓';
-      });
-    } else {
-      setState(() => _withinRangeText = 'Location captured ✓');
-    }
+    setState(() => _withinRangeText = 'Location captured ✓');
   }
 
-  /// Captures the customer's exact GPS location and, if the artist has set
-  /// a shop location + radius, checks they're within range before allowing
-  /// the booking to continue.
+  /// Best-effort capture of the customer's GPS location for the artist's
+  /// reference (so they can find the address on a map). Never blocks
+  /// submission — if location can't be captured, the booking still goes
+  /// through using whatever address text was typed.
   Future<bool> _captureAndValidateLocation() async {
-    // Already detected via the address field's location button — reuse it.
-    if (_customerLat != null && _customerLng != null) {
-      final settings = _shopSettings;
-      if (settings != null && settings.hasLocation) {
-        final distance = LocationService.distanceKm(settings.latitude!, settings.longitude!,
-            _customerLat!, _customerLng!);
-        if (distance > settings.serviceRadiusKm) {
-          _showError(
-              'Sorry, you\'re ${distance.toStringAsFixed(1)}km away — we currently only serve within ${settings.serviceRadiusKm.toStringAsFixed(0)}km.');
-          return false;
-        }
-      }
-      return true;
-    }
+    if (_customerLat != null && _customerLng != null) return true;
 
     setState(() => _fetchingLocation = true);
     final result = await LocationService.getCurrentLocation();
     setState(() => _fetchingLocation = false);
 
-    if (result == null) {
-      _showError(
-          'Please enable location access so we can confirm you\'re within our service area.');
-      return false;
-    }
-
-    _customerLat = result.latitude;
-    _customerLng = result.longitude;
-
-    final settings = _shopSettings;
-    if (settings != null && settings.hasLocation) {
-      final distance = LocationService.distanceKm(
-          settings.latitude!, settings.longitude!, result.latitude, result.longitude);
-      if (distance > settings.serviceRadiusKm) {
-        _showError(
-            'Sorry, you\'re ${distance.toStringAsFixed(1)}km away — we currently only serve within ${settings.serviceRadiusKm.toStringAsFixed(0)}km.');
-        return false;
-      }
+    if (result != null) {
+      _customerLat = result.latitude;
+      _customerLng = result.longitude;
     }
     return true;
   }
@@ -331,14 +292,6 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
                       ? AppColors.error
                       : AppColors.success,
                 ),
-              ),
-            ],
-            if (_shopSettings?.hasLocation == true) ...[
-              const SizedBox(height: 6),
-              Text(
-                'We currently serve within ${_shopSettings!.serviceRadiusKm.toStringAsFixed(0)}km of our shop — '
-                'we\'ll check your exact location when you submit.',
-                style: const TextStyle(fontSize: 11, color: AppColors.textLight),
               ),
             ],
             const SizedBox(height: 20),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/shop_settings.dart';
 import '../providers/auth_provider.dart';
+import '../services/firestore_service.dart';
 import '../utils/theme.dart';
 import 'auth/login_screen.dart';
 import 'home/home_screen.dart';
@@ -47,13 +49,18 @@ class SplashScreen extends StatelessWidget {
             child: const Icon(Icons.spa, size: 64, color: Colors.white),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Mehendi Studio',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-            ),
+          FutureBuilder<ShopSettings>(
+            future: FirestoreService().getShopSettings(),
+            builder: (context, snapshot) {
+              return Text(
+                snapshot.data?.businessName ?? 'Mehendi Studio',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            },
           ),
           const SizedBox(height: 8),
           const Text(

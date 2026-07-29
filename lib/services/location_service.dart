@@ -27,9 +27,25 @@ class LocationService {
       return null;
     }
 
-    final position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
+    Position position;
+    try {
+      position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      );
+    } catch (_) {
+      // High-accuracy GPS fix timed out (common indoors/first use) — try
+      // once more with a lower accuracy target, which resolves much faster
+      // using network/cell location instead of waiting for a GPS lock.
+      try {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 10),
+        );
+      } catch (_) {
+        return null;
+      }
+    }
     final address = await reverseGeocode(position.latitude, position.longitude);
     return LocationResult(position.latitude, position.longitude, address: address);
   }

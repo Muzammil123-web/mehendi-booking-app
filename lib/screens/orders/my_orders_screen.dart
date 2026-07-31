@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/booking.dart';
 import '../../models/order.dart';
 import '../../models/review.dart';
+import '../../models/shop_settings.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/theme.dart';
@@ -139,21 +141,24 @@ class _BookingsTab extends StatelessWidget {
                     StatusTimeline(stages: _stages, currentIndex: _stageIndex(b.status)),
                   ],
                   const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '${AppConstants.currencySymbol}${b.servicePrice.toStringAsFixed(0)} • ${b.paymentMethod == PaymentMethod.online ? 'Paid Online' : b.paymentMethod == PaymentMethod.upi ? 'UPI' : 'COD'}',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                      ),
-                      if (b.status == BookingStatus.pending ||
-                          b.status == BookingStatus.confirmed)
-                        TextButton(
-                          onPressed: () => _confirmCancel(context, firestoreService, b),
-                          child: const Text('Cancel', style: TextStyle(color: AppColors.error)),
-                        ),
-                    ],
+                  Text(
+                    '${AppConstants.currencySymbol}${b.servicePrice.toStringAsFixed(0)} • ${b.paymentMethod == PaymentMethod.online ? 'Paid Online' : b.paymentMethod == PaymentMethod.upi ? (b.paymentStatus == PaymentStatus.paid ? 'UPI (Paid)' : 'UPI (Unpaid)') : 'COD'}',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                   ),
+                  if (b.status == BookingStatus.confirmed &&
+                      b.paymentMethod == PaymentMethod.upi &&
+                      b.paymentStatus != PaymentStatus.paid)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _payViaUpi(context, b),
+                          icon: const Icon(Icons.qr_code, size: 18),
+                          label: const Text('Pay Now via UPI'),
+                        ),
+                      ),
+                    ),
                   if (b.status == BookingStatus.completed)
                     FutureBuilder<bool>(
                       future: firestoreService.hasReviewedSource(b.id),
@@ -191,24 +196,27 @@ class _BookingsTab extends StatelessWidget {
     );
   }
 
-  void _confirmCancel(BuildContext context, FirestoreService service, Booking booking) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel booking?'),
-        content: const Text('This will free up the time slot for others.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('No')),
-          TextButton(
-            onPressed: () async {
-              await service.cancelBooking(booking);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Yes, Cancel', style: TextStyle(color: AppColors.error)),
-          ),
-        ],
-      ),
+  Future<void> _payViaUpi(BuildContext context, Booking booking) async {
+    final settings = await FirestoreService().getShopSettings();
+    final upiId = settings.upiId;
+    if (upiId.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('UPI isn\'t set up by the studio yet.')));
+      }
+      return;
+    }
+    final uri = Uri.parse(
+      'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(settings.businessName)}'
+      '&am=${booking.servicePrice.toStringAsFixed(2)}&cu=INR'
+      '&tn=${Uri.encodeComponent('${booking.serviceName} booking')}',
     );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Could not open a UPI app.')));
+    }
   }
 }
 

@@ -114,7 +114,7 @@ class MyActivityScreen extends StatelessWidget {
           SizedBox(
             height: 120,
             child: StreamBuilder<List<Review>>(
-              stream: firestoreService.streamTestimonials(),
+              stream: firestoreService.streamAllReviews(),
               builder: (context, snapshot) {
                 final testimonials = snapshot.data ?? [];
                 if (testimonials.isEmpty) {

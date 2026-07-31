@@ -286,6 +286,16 @@ class FirestoreService {
         .map((snap) => snap.docs.map((d) => Review.fromMap(d.data(), d.id)).toList());
   }
 
+  /// Every review left anywhere — admin-added testimonials AND real
+  /// customer reviews of specific services/products — shown together in
+  /// the Our Work tab's "What Customers Say" section.
+  Stream<List<Review>> streamAllReviews() {
+    return _db
+        .collection(AppConstants.reviewsCollection)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => Review.fromMap(d.data(), d.id)).toList());
+  }
+
   /// Whether the current user has already reviewed this specific booking/order,
   /// so the "Rate this" button can hide itself after a review is submitted.
   Future<bool> hasReviewedSource(String sourceId) async {

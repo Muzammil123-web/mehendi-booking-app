@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../models/henna_service.dart';
 import '../../models/mehendi_design.dart';
 import '../../models/time_slot.dart';
@@ -10,8 +9,6 @@ import '../../models/booking.dart';
 import '../../models/shop_settings.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/firestore_service.dart';
-import '../../services/payment_service.dart';
-import '../../services/location_service.dart';
 import '../../utils/theme.dart';
 import '../../utils/constants.dart';
 import '../../widgets/custom_button.dart';
@@ -39,19 +36,13 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
   final _addressCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
-  late final PaymentService _paymentService;
   PaymentMethod _paymentMethod = PaymentMethod.cod;
   bool _isProcessing = false;
-  bool _fetchingLocation = false;
-  double? _customerLat;
-  double? _customerLng;
-  String? _withinRangeText;
   ShopSettings? _shopSettings;
 
   @override
   void initState() {
     super.initState();
-    _paymentService = PaymentService();
     _loadShopSettings();
   }
 
@@ -60,66 +51,17 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
     if (mounted) setState(() => _shopSettings = settings);
   }
 
-  @override
-  void dispose() {
-    _paymentService.dispose();
-    super.dispose();
-  }
-
-  Future<void> _detectLocationNow() async {
-    setState(() => _fetchingLocation = true);
-    final result = await LocationService.getCurrentLocation();
-    setState(() => _fetchingLocation = false);
-
-    if (result == null) {
-      _showError(
-          'Could not detect your location. You can still type your address manually.');
-      return;
-    }
-
-    _customerLat = result.latitude;
-    _customerLng = result.longitude;
-    if (result.address != null && result.address!.isNotEmpty) {
-      _addressCtrl.text = result.address!;
-    }
-    setState(() => _withinRangeText = 'Location captured ✓');
-  }
-
-  /// Best-effort capture of the customer's GPS location for the artist's
-  /// reference (so they can find the address on a map). Never blocks
-  /// submission — if location can't be captured, the booking still goes
-  /// through using whatever address text was typed.
-  Future<bool> _captureAndValidateLocation() async {
-    if (_customerLat != null && _customerLng != null) return true;
-
-    setState(() => _fetchingLocation = true);
-    final result = await LocationService.getCurrentLocation();
-    setState(() => _fetchingLocation = false);
-
-    if (result != null) {
-      _customerLat = result.latitude;
-      _customerLng = result.longitude;
-    }
-    return true;
-  }
-
   Future<void> _confirmBooking() async {
     final user = context.read<AuthProvider>().appUser;
     if (user == null) return;
 
     if (_addressCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Please enter your address or "In-store"')));
+          content: Text('Please enter the address — yours, or whoever this booking is for')));
       return;
     }
 
     setState(() => _isProcessing = true);
-
-    final withinRange = await _captureAndValidateLocation();
-    if (!withinRange) {
-      setState(() => _isProcessing = false);
-      return;
-    }
 
     final booking = Booking(
       id: const Uuid().v4(),
@@ -136,72 +78,22 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
       startTime: widget.slot.startTime,
       endTime: widget.slot.endTime,
       address: _addressCtrl.text.trim(),
-      customerLat: _customerLat,
-      customerLng: _customerLng,
       paymentMethod: _paymentMethod,
       createdAt: DateTime.now(),
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
     );
 
-    if (_paymentMethod == PaymentMethod.cod) {
-      try {
-        await _firestoreService.createBooking(booking);
-        if (!mounted) return;
-        _showSuccessAndExit();
-      } catch (e) {
-        _showError('Could not create booking. Please try again.');
-      }
-      return;
+    try {
+      await _firestoreService.createBooking(booking);
+      if (!mounted) return;
+      _showSuccessAndExit(
+        extraNote: _paymentMethod == PaymentMethod.upi
+            ? 'Once the artist accepts your request, you\'ll be able to complete the UPI payment from My Orders.'
+            : null,
+      );
+    } catch (e) {
+      _showError('Could not create booking. Please try again.');
     }
-
-    if (_paymentMethod == PaymentMethod.upi) {
-      final upiId = _shopSettings?.upiId ?? '';
-      if (upiId.isEmpty) {
-        _showError('UPI payment isn\'t set up yet — please choose another payment method.');
-        return;
-      }
-      try {
-        await _firestoreService.createBooking(booking);
-        final uri = Uri.parse(
-          'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(_shopSettings?.businessName ?? 'Mehendi Studio')}'
-          '&am=${widget.service.price.toStringAsFixed(2)}&cu=INR'
-          '&tn=${Uri.encodeComponent('${widget.service.name} booking')}',
-        );
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
-        }
-        if (!mounted) return;
-        _showSuccessAndExit(
-          extraNote:
-              'Please complete the payment in your UPI app. We\'ll verify it and confirm your booking shortly.',
-        );
-      } catch (e) {
-        _showError('Could not open your UPI app. Please try again.');
-      }
-      return;
-    }
-
-    // Online payment via Razorpay
-    _paymentService.openCheckout(
-      amount: widget.service.price,
-      name: widget.service.name,
-      description: '${widget.service.name} - ${DateFormat('MMM d').format(widget.date)}',
-      contactPhone: user.phone,
-      contactEmail: user.email,
-      onSuccess: (paymentId) async {
-        try {
-          final bookingId = await _firestoreService.createBooking(booking);
-          await _firestoreService.markBookingPaid(bookingId, paymentId);
-          if (!mounted) return;
-          _showSuccessAndExit();
-        } catch (e) {
-          _showError('Payment succeeded but booking failed. Contact support with payment ID: $paymentId');
-        }
-      },
-      onError: (message) {
-        _showError('Payment failed: $message');
-      },
-    );
   }
 
   void _showError(String message) {
@@ -228,7 +120,7 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
             const SizedBox(height: 8),
             Text(
               'Your ${widget.service.name} request for ${DateFormat('MMM d').format(widget.date)}, ${widget.slot.startTime} has been sent. '
-              'We\'ll confirm it as soon as the artist accepts — you can track its status in My Activity.'
+              'We\'ll confirm it as soon as the artist accepts — you can track its status in My Orders.'
               '${extraNote != null ? '\n\n$extraNote' : ''}',
               textAlign: TextAlign.center,
               style: const TextStyle(color: AppColors.textLight),
@@ -265,35 +157,20 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
             _summaryCard(),
             const SizedBox(height: 24),
             const Text('Address', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            const Text(
+              'Booking this for someone else? Just type their address below.',
+              style: TextStyle(fontSize: 11, color: AppColors.textLight),
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _addressCtrl,
               maxLines: 2,
-              decoration: InputDecoration(
-                hintText: 'Where should the artist visit? (or type "In-store")',
-                prefixIcon: const Icon(Icons.location_on_outlined),
-                suffixIcon: IconButton(
-                  icon: _fetchingLocation
-                      ? const SizedBox(
-                          width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.my_location, color: AppColors.primary),
-                  tooltip: 'Detect my exact location',
-                  onPressed: _fetchingLocation ? null : _detectLocationNow,
-                ),
+              decoration: const InputDecoration(
+                hintText: 'House no, street, area, city (or type "In-store")',
+                prefixIcon: Icon(Icons.location_on_outlined),
               ),
             ),
-            if (_customerLat != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                _withinRangeText ?? 'Location captured ✓',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: _withinRangeText != null && _withinRangeText!.contains('Sorry')
-                      ? AppColors.error
-                      : AppColors.success,
-                ),
-              ),
-            ],
             const SizedBox(height: 20),
             const Text('Notes (optional)', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
@@ -315,7 +192,7 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
                   method: PaymentMethod.upi,
                   icon: Icons.qr_code,
                   title: 'PhonePe / UPI',
-                  subtitle: 'Pay directly via UPI — no gateway fees',
+                  subtitle: 'Pay once the artist accepts your request',
                 ),
               ),
             _paymentOption(
@@ -326,11 +203,7 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
             ),
             const SizedBox(height: 32),
             CustomButton(
-              label: _fetchingLocation
-                  ? 'Checking your location...'
-                  : _paymentMethod == PaymentMethod.upi
-                      ? 'Pay via UPI & Send Request'
-                      : 'Send Booking Request (Pay on visit)',
+              label: 'Send Booking Request',
               isLoading: _isProcessing,
               onPressed: _confirmBooking,
             ),

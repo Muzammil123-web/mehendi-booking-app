@@ -41,6 +41,30 @@ class MehendiApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: const SplashScreen(),
+        builder: (context, child) {
+          // The whole app was designed mobile-first. Rather than a full
+          // separate desktop layout, on wide screens (web/tablet/desktop)
+          // we constrain content to a phone-like column and center it —
+          // keeps every screen usable and good-looking without a rewrite.
+          final width = MediaQuery.of(context).size.width;
+          if (width <= 600 || child == null) return child ?? const SizedBox();
+          return Container(
+            color: AppColors.primaryDark,
+            child: Center(
+              child: Container(
+                width: 480,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 24),
+                  ],
+                ),
+                child: child,
+              ),
+            ),
+          );
+        },
       ),
     );
   }

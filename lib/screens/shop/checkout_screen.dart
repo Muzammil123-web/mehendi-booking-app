@@ -7,8 +7,6 @@ import '../../models/booking.dart'; // shared PaymentMethod/PaymentStatus enums
 import '../../models/order.dart'; // also exports CartItemData
 import '../../models/shop_settings.dart';
 import '../../services/firestore_service.dart';
-import '../../services/payment_service.dart';
-import '../../services/location_service.dart';
 import '../../utils/theme.dart';
 import '../../utils/constants.dart';
 import '../../widgets/custom_button.dart';
@@ -24,17 +22,13 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _addressCtrl = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
-  late final PaymentService _paymentService;
   PaymentMethod _paymentMethod = PaymentMethod.cod;
   bool _isProcessing = false;
-  bool _detectingLocation = false;
-  String? _locationHint;
   ShopSettings? _shopSettings;
 
   @override
   void initState() {
     super.initState();
-    _paymentService = PaymentService();
     final user = context.read<AuthProvider>().appUser;
     if (user?.address != null) _addressCtrl.text = user!.address!;
     _firestoreService.getShopSettings().then((s) {
@@ -42,35 +36,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _paymentService.dispose();
-    super.dispose();
-  }
-
   double _deliveryFee(double subtotal) {
     if (subtotal >= AppConstants.freeDeliveryAboveAmount) return 0;
     return AppConstants.deliveryFeeFlat;
-  }
-
-  Future<void> _detectDeliveryLocation() async {
-    setState(() => _detectingLocation = true);
-    final result = await LocationService.getCurrentLocation();
-    setState(() => _detectingLocation = false);
-
-    if (result == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not detect your location. Please enable location access and try again.'),
-        ));
-      }
-      return;
-    }
-
-    if (result.address != null && result.address!.isNotEmpty) {
-      _addressCtrl.text = result.address!;
-    }
-    setState(() => _locationHint = 'Location detected ✓ — feel free to edit the address above.');
   }
 
   Future<void> _placeOrder() async {
@@ -79,8 +47,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (user == null || cart.isEmpty) return;
 
     if (_addressCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Please enter a delivery address')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Please enter a delivery address — yours, or whoever this is for')));
       return;
     }
 
@@ -124,52 +92,28 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
-    if (_paymentMethod == PaymentMethod.upi) {
-      final upiId = _shopSettings?.upiId ?? '';
-      if (upiId.isEmpty) {
-        _showError('UPI payment isn\'t set up yet — please choose another payment method.');
-        return;
-      }
-      try {
-        await _firestoreService.createOrder(order);
-        final uri = Uri.parse(
-          'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(_shopSettings?.businessName ?? 'Mehendi Studio')}'
-          '&am=${total.toStringAsFixed(2)}&cu=INR'
-          '&tn=${Uri.encodeComponent('Henna cone order')}',
-        );
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri);
-        }
-        cart.clearCart();
-        if (!mounted) return;
-        _showSuccessAndExit();
-      } catch (e) {
-        _showError('Could not open your UPI app. Please try again.');
-      }
+    // UPI
+    final upiId = _shopSettings?.upiId ?? '';
+    if (upiId.isEmpty) {
+      _showError('UPI payment isn\'t set up yet — please choose Cash on Delivery.');
       return;
     }
-
-    _paymentService.openCheckout(
-      amount: total,
-      name: 'Henna Cone Order',
-      description: '${cart.itemList.length} item(s)',
-      contactPhone: user.phone,
-      contactEmail: user.email,
-      onSuccess: (paymentId) async {
-        try {
-          final orderId = await _firestoreService.createOrder(order);
-          await _firestoreService.markOrderPaid(orderId, paymentId);
-          cart.clearCart();
-          if (!mounted) return;
-          _showSuccessAndExit();
-        } catch (e) {
-          _showError('Payment succeeded but order failed. Contact support with payment ID: $paymentId');
-        }
-      },
-      onError: (message) {
-        _showError('Payment failed: $message');
-      },
-    );
+    try {
+      await _firestoreService.createOrder(order);
+      final uri = Uri.parse(
+        'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(_shopSettings?.businessName ?? 'Mehendi Studio')}'
+        '&am=${total.toStringAsFixed(2)}&cu=INR'
+        '&tn=${Uri.encodeComponent('Henna cone order')}',
+      );
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      }
+      cart.clearCart();
+      if (!mounted) return;
+      _showSuccessAndExit();
+    } catch (e) {
+      _showError('Could not open your UPI app. Please try again.');
+    }
   }
 
   void _showError(String message) {
@@ -194,7 +138,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const Text('Order Placed!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             const SizedBox(height: 8),
             const Text(
-              'Your henna cones are being packed. You can track the order in your Activity tab.',
+              'Your henna cones are being packed. You can track the order in My Orders.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.textLight),
             ),
@@ -232,27 +176,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Delivery Address', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            const Text(
+              'Ordering for someone else? Just type their address below.',
+              style: TextStyle(fontSize: 11, color: AppColors.textLight),
+            ),
             const SizedBox(height: 8),
             TextField(
               controller: _addressCtrl,
               maxLines: 3,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 hintText: 'House no, street, city, pincode',
-                prefixIcon: const Icon(Icons.location_on_outlined),
-                suffixIcon: IconButton(
-                  icon: _detectingLocation
-                      ? const SizedBox(
-                          width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.my_location, color: AppColors.primary),
-                  tooltip: 'Detect my exact location',
-                  onPressed: _detectingLocation ? null : _detectDeliveryLocation,
-                ),
+                prefixIcon: Icon(Icons.location_on_outlined),
               ),
             ),
-            if (_locationHint != null) ...[
-              const SizedBox(height: 6),
-              Text(_locationHint!, style: const TextStyle(fontSize: 11, color: AppColors.success)),
-            ],
             const SizedBox(height: 24),
             const Text('Order Summary', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),

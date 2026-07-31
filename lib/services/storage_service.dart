@@ -18,10 +18,9 @@ static const String cloudName = 'hy3uy2cx';
 static const String uploadPreset = 'newbookingapp';
 
   Future<String> uploadWorkPostFile(File file, {required bool isVideo}) async {
-    if (cloudName == 'hy3uy2cx' || uploadPreset == 'newbookingapp') {
-      throw Exception(
-          'Cloudinary isn\'t set up yet - see the instructions at the top of storage_service.dart');
-    }
+   if (cloudName.isEmpty || uploadPreset.isEmpty) {
+  throw Exception('Cloudinary is not configured.');
+}
 
     final resourceType = isVideo ? 'video' : 'image';
     final uri = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/$resourceType/upload');

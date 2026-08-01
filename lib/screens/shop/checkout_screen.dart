@@ -11,6 +11,7 @@ import '../../utils/theme.dart';
 import '../../utils/constants.dart';
 import '../../widgets/custom_button.dart';
 import '../home/home_screen.dart';
+import '../map_picker_screen.dart';
 
 class CheckoutScreen extends StatefulWidget {
   const CheckoutScreen({super.key});
@@ -25,6 +26,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   PaymentMethod _paymentMethod = PaymentMethod.cod;
   bool _isProcessing = false;
   ShopSettings? _shopSettings;
+  double? _pickedLat;
+  double? _pickedLng;
 
   @override
   void initState() {
@@ -41,14 +44,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return AppConstants.deliveryFeeFlat;
   }
 
+  Future<void> _pickLocation() async {
+    final result = await Navigator.of(context).push<PickedLocation>(
+      MaterialPageRoute(builder: (_) => const MapPickerScreen()),
+    );
+    if (result != null) {
+      setState(() {
+        _pickedLat = result.latitude;
+        _pickedLng = result.longitude;
+      });
+    }
+  }
+
   Future<void> _placeOrder() async {
     final user = context.read<AuthProvider>().appUser;
     final cart = context.read<CartProvider>();
     if (user == null || cart.isEmpty) return;
 
-    if (_addressCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Please enter a delivery address — yours, or whoever this is for')));
+    if (_addressCtrl.text.trim().isEmpty && _pickedLat == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Please select a delivery location on the map')));
       return;
     }
 
@@ -64,6 +79,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       userName: user.name,
       userPhone: user.phone,
       deliveryAddress: _addressCtrl.text.trim(),
+      deliveryLat: _pickedLat,
+      deliveryLng: _pickedLng,
       items: cart.itemList
           .map((i) => CartItemData(
                 productId: i.product.id,
@@ -175,18 +192,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Delivery Address', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('Delivery Location', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             const Text(
-              'Ordering for someone else? Just type their address below.',
+              'Ordering for someone else? Just pick their location on the map.',
               style: TextStyle(fontSize: 11, color: AppColors.textLight),
             ),
             const SizedBox(height: 8),
+            GestureDetector(
+              onTap: _pickLocation,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _pickedLat != null ? AppColors.success : Colors.grey.shade300,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.map_outlined,
+                        color: _pickedLat != null ? AppColors.success : AppColors.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _pickedLat != null
+                            ? 'Location selected ✓ — tap to change'
+                            : 'Select delivery location on map',
+                        style: TextStyle(
+                            color: _pickedLat != null ? AppColors.success : AppColors.textDark),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.textLight),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _addressCtrl,
               maxLines: 3,
               decoration: const InputDecoration(
-                hintText: 'House no, street, city, pincode',
+                hintText: 'Flat/floor, house no, pincode (optional)',
                 prefixIcon: Icon(Icons.location_on_outlined),
               ),
             ),

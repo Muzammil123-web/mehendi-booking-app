@@ -14,13 +14,14 @@ import 'package:http/http.dart' as http;
 /// 4. Paste both values below
 class StorageService {
   // TODO: replace these two with your own free Cloudinary account details.
-static const String cloudName = 'hy3uy2cx';
-static const String uploadPreset = 'newbookingapp';
+  static const String cloudName = 'YOUR_CLOUD_NAME';
+  static const String uploadPreset = 'YOUR_UPLOAD_PRESET';
 
   Future<String> uploadWorkPostFile(File file, {required bool isVideo}) async {
-   if (cloudName.isEmpty || uploadPreset.isEmpty) {
-  throw Exception('Cloudinary is not configured.');
-}
+    if (cloudName == 'YOUR_CLOUD_NAME' || uploadPreset == 'YOUR_UPLOAD_PRESET') {
+      throw Exception(
+          'Cloudinary isn\'t set up yet - see the instructions at the top of storage_service.dart');
+    }
 
     final resourceType = isVideo ? 'video' : 'image';
     final uri = Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/$resourceType/upload');

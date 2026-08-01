@@ -13,6 +13,7 @@ import '../../utils/theme.dart';
 import '../../utils/constants.dart';
 import '../../widgets/custom_button.dart';
 import '../home/home_screen.dart';
+import '../map_picker_screen.dart';
 
 class BookingConfirmScreen extends StatefulWidget {
   final HennaService service;
@@ -39,6 +40,8 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
   PaymentMethod _paymentMethod = PaymentMethod.cod;
   bool _isProcessing = false;
   ShopSettings? _shopSettings;
+  double? _pickedLat;
+  double? _pickedLng;
 
   @override
   void initState() {
@@ -51,13 +54,25 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
     if (mounted) setState(() => _shopSettings = settings);
   }
 
+  Future<void> _pickLocation() async {
+    final result = await Navigator.of(context).push<PickedLocation>(
+      MaterialPageRoute(builder: (_) => const MapPickerScreen()),
+    );
+    if (result != null) {
+      setState(() {
+        _pickedLat = result.latitude;
+        _pickedLng = result.longitude;
+      });
+    }
+  }
+
   Future<void> _confirmBooking() async {
     final user = context.read<AuthProvider>().appUser;
     if (user == null) return;
 
-    if (_addressCtrl.text.trim().isEmpty) {
+    if (_addressCtrl.text.trim().isEmpty && _pickedLat == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Please enter the address — yours, or whoever this booking is for')));
+          content: Text('Please select a location on the map, or type "In-store"')));
       return;
     }
 
@@ -78,6 +93,8 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
       startTime: widget.slot.startTime,
       endTime: widget.slot.endTime,
       address: _addressCtrl.text.trim(),
+      customerLat: _pickedLat,
+      customerLng: _pickedLng,
       paymentMethod: _paymentMethod,
       createdAt: DateTime.now(),
       notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
@@ -156,18 +173,50 @@ class _BookingConfirmScreenState extends State<BookingConfirmScreen> {
           children: [
             _summaryCard(),
             const SizedBox(height: 24),
-            const Text('Address', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('Location', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             const Text(
-              'Booking this for someone else? Just type their address below.',
+              'Booking this for someone else? Just pick their location on the map.',
               style: TextStyle(fontSize: 11, color: AppColors.textLight),
             ),
             const SizedBox(height: 8),
+            GestureDetector(
+              onTap: _pickLocation,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _pickedLat != null ? AppColors.success : Colors.grey.shade300,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.map_outlined,
+                        color: _pickedLat != null ? AppColors.success : AppColors.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _pickedLat != null
+                            ? 'Location selected ✓ — tap to change'
+                            : 'Select location on map',
+                        style: TextStyle(
+                            color: _pickedLat != null ? AppColors.success : AppColors.textDark),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.textLight),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _addressCtrl,
               maxLines: 2,
               decoration: const InputDecoration(
-                hintText: 'House no, street, area, city (or type "In-store")',
+                hintText: 'Flat/floor, landmark, or type "In-store" (optional)',
                 prefixIcon: Icon(Icons.location_on_outlined),
               ),
             ),

@@ -8,6 +8,8 @@ class OrderModel {
   final String userName;
   final String userPhone;
   final String deliveryAddress;
+  final double? deliveryLat;
+  final double? deliveryLng;
   final List<CartItemData> items;
   final double subtotal;
   final double deliveryFee;
@@ -24,6 +26,8 @@ class OrderModel {
     required this.userName,
     required this.userPhone,
     required this.deliveryAddress,
+    this.deliveryLat,
+    this.deliveryLng,
     required this.items,
     required this.subtotal,
     required this.deliveryFee,
@@ -42,6 +46,8 @@ class OrderModel {
       userName: map['userName'] ?? '',
       userPhone: map['userPhone'] ?? '',
       deliveryAddress: map['deliveryAddress'] ?? '',
+      deliveryLat: map['deliveryLat']?.toDouble(),
+      deliveryLng: map['deliveryLng']?.toDouble(),
       items: (map['items'] as List<dynamic>? ?? [])
           .map((i) => CartItemData.fromMap(i as Map<String, dynamic>))
           .toList(),
@@ -70,6 +76,8 @@ class OrderModel {
       'userName': userName,
       'userPhone': userPhone,
       'deliveryAddress': deliveryAddress,
+      'deliveryLat': deliveryLat,
+      'deliveryLng': deliveryLng,
       'items': items.map((i) => i.toMap()).toList(),
       'subtotal': subtotal,
       'deliveryFee': deliveryFee,

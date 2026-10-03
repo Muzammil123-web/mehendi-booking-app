@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -109,7 +109,8 @@ class AdminWorkPostsScreen extends StatelessWidget {
     final linkCtrl = TextEditingController(); // for video: an external reel/YouTube link
     final bodyCtrl = TextEditingController();
     WorkPostType type = WorkPostType.photo;
-    File? pickedFile;
+    Uint8List? pickedBytes;
+    String? pickedFilename;
     bool useExternalLink = false;
     bool uploading = false;
 
@@ -133,7 +134,7 @@ class AdminWorkPostsScreen extends StatelessWidget {
                       selected: type == t,
                       onSelected: (_) => setState(() {
                         type = t;
-                        pickedFile = null;
+                        pickedBytes = null;
                       }),
                     );
                   }).toList(),
@@ -145,28 +146,34 @@ class AdminWorkPostsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
 
-                // PHOTO: always upload from phone
+                // PHOTO: always upload from device
                 if (type == WorkPostType.photo) ...[
                   OutlinedButton.icon(
                     onPressed: () async {
                       final picked =
                           await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
-                      if (picked != null) setState(() => pickedFile = File(picked.path));
+                      if (picked != null) {
+                        final bytes = await picked.readAsBytes();
+                        setState(() {
+                          pickedBytes = bytes;
+                          pickedFilename = picked.name;
+                        });
+                      }
                     },
                     icon: const Icon(Icons.photo_library_outlined),
-                    label: Text(pickedFile == null ? 'Choose Photo' : 'Photo Selected ✓'),
+                    label: Text(pickedBytes == null ? 'Choose Photo' : 'Photo Selected ✓'),
                   ),
-                  if (pickedFile != null)
+                  if (pickedBytes != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(pickedFile!, height: 100, fit: BoxFit.cover),
+                        child: Image.memory(pickedBytes!, height: 100, fit: BoxFit.cover),
                       ),
                     ),
                 ],
 
-                // VIDEO: either upload from phone, or paste an external reel link
+                // VIDEO: either upload from device, or paste an external reel link
                 if (type == WorkPostType.video) ...[
                   Row(
                     children: [
@@ -200,10 +207,16 @@ class AdminWorkPostsScreen extends StatelessWidget {
                     OutlinedButton.icon(
                       onPressed: () async {
                         final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
-                        if (picked != null) setState(() => pickedFile = File(picked.path));
+                        if (picked != null) {
+                          final bytes = await picked.readAsBytes();
+                          setState(() {
+                            pickedBytes = bytes;
+                            pickedFilename = picked.name;
+                          });
+                        }
                       },
                       icon: const Icon(Icons.video_library_outlined),
-                      label: Text(pickedFile == null ? 'Choose Video' : 'Video Selected ✓'),
+                      label: Text(pickedBytes == null ? 'Choose Video' : 'Video Selected ✓'),
                     ),
                 ],
 
@@ -228,10 +241,11 @@ class AdminWorkPostsScreen extends StatelessWidget {
                       setState(() => uploading = true);
 
                       String mediaUrl = linkCtrl.text.trim();
-                      if (pickedFile != null) {
+                      if (pickedBytes != null) {
                         try {
-                          mediaUrl = await StorageService().uploadWorkPostFile(
-                            pickedFile!,
+                          mediaUrl = await StorageService().uploadWorkPostBytes(
+                            pickedBytes!,
+                            pickedFilename ?? 'upload',
                             isVideo: type == WorkPostType.video,
                           );
                         } catch (e) {

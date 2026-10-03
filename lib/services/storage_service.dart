@@ -1,9 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
-/// Uploads a local file (picked from the phone's gallery) to Cloudinary's
-/// free tier and returns a public URL to save on the Firestore doc.
+/// Uploads a file (as raw bytes, so this works on Android AND web) to
+/// Cloudinary's free tier and returns a public URL to save on the
+/// Firestore doc.
 ///
 /// SETUP (one-time, free, no credit card):
 /// 1. Create a free account at https://cloudinary.com
@@ -17,7 +18,11 @@ class StorageService {
   static const String cloudName = 'YOUR_CLOUD_NAME';
   static const String uploadPreset = 'YOUR_UPLOAD_PRESET';
 
-  Future<String> uploadWorkPostFile(File file, {required bool isVideo}) async {
+  Future<String> uploadWorkPostBytes(
+    Uint8List bytes,
+    String filename, {
+    required bool isVideo,
+  }) async {
     if (cloudName == 'YOUR_CLOUD_NAME' || uploadPreset == 'YOUR_UPLOAD_PRESET') {
       throw Exception(
           'Cloudinary isn\'t set up yet - see the instructions at the top of storage_service.dart');
@@ -28,7 +33,7 @@ class StorageService {
 
     final request = http.MultipartRequest('POST', uri)
       ..fields['upload_preset'] = uploadPreset
-      ..files.add(await http.MultipartFile.fromPath('file', file.path));
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
 
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
